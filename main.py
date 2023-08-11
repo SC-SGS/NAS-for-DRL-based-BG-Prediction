@@ -1,5 +1,6 @@
 import os
 import gin
+import csv
 import optuna
 import datetime
 import tensorflow as tf
@@ -268,7 +269,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 current_state_size_factor * current_hp['actor_net']['cell_size'][0]
             )
             current_agent = rl_agent.get_rl_agent(current_tf_train_env, rl_algorithm, use_gpu, hp=current_hp)
-            current_train_steps = trial.suggest_int('train_steps', int(1e4), int(5e4))
+            current_train_steps = trial.suggest_int('train_steps', int(5), int(10))
             objective_metric = training.rl_training_loop(
                 log_dir, current_tf_train_env, current_tf_train_env_eval, current_tf_eval_env,
                 current_tf_eval_env_train, current_agent, ts_train_data, ts_eval_data, file_writer, setup,
@@ -276,12 +277,29 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 data_summary, env_implementation, multi_task, eval_interval=None, max_train_steps=current_train_steps,
                 visualize=False, use_tb_logging=False, save_model=False, save_results=False
             )
+            # calculate model complexity (here: number of parameters)
             current_agent_model_complexity = 0
             for tv in current_agent.trainable_variables:
                 if len(tv.shape) > 0:
                     current_agent_model_complexity += tv.shape[-1]
                 else:
                     current_agent_model_complexity += 1
+            # write hyperparameters from optuna trial, model complexity, and objective metric to csv
+            with open(os.path.join(log_dir, 'optuna_trials.csv'), 'a') as optuna_trials_file:
+                optuna_trials_columns = ['trial_number', 'objective_metric', 'model_complexity']
+                optuna_trials_columns.extend(trial.params.keys())
+                writer = csv.DictWriter(optuna_trials_file, fieldnames=optuna_trials_columns)
+                optuna_data = {
+                    'trial_number': trial.number,
+                    'objective_metric': objective_metric.numpy(),
+                    'model_complexity': current_agent_model_complexity,
+                }
+                optuna_data.update(trial.params)
+                # if header does not exist, write it
+                if optuna_trials_file.tell() == 0:
+                    writer.writeheader()
+
+                writer.writerow(optuna_data)
             # normalize complexity (default architecture has 32801 parameters)
             current_agent_model_complexity /= 32801
             # normalize objective metric
@@ -378,7 +396,8 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     # train agent on environment
     if model_hyperparameters is not None and 'train_steps' in model_hyperparameters:
         training.rl_training_loop(
-            log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent,ts_train_data, ts_eval_data,
+            log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent, ts_train_data,
+            ts_eval_data,
             file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h, total_eval_time_h,
             max_attribute_val, num_iter, data_summary, env_implementation, multi_task,
             max_train_steps=model_hyperparameters['train_steps']
