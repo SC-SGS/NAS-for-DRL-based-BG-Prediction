@@ -13,7 +13,31 @@ run.normalization = True
 run.normalization_type = "z_score"
 run.setup = "multi_step"
 run.rl_algorithm = "sac"
-run.use_hpo = True
+#------------------------ [Optional] if not specified, the default hyperparameters are used ----------------------------
+agent_hpo = {
+    'critic_net': {
+        'cell_type': 'lstm',
+        'cell_size': (256,),
+        'observation_fc_layer_params': (256, 256),
+        'action_fc_layer_params': (128,),
+        'joint_fc_layer_params': (256, 256),
+        'output_fc_layer_params': (256, 256),
+        'activation_fn': @relu,
+    },
+    'actor_net': {
+        'cell_type': 'lstm',
+        'cell_size': (256,),
+        'input_fc_layer_params': (256, 512, 256),
+        'output_fc_layer_params': (256, 512, 256),
+        'activation_fn': @relu,
+    },
+    'target_update_period': 10,
+    'target_update_tau': 0.005,
+}
+# ----------------------------------------------------------------------------------------------------------------------
+run.use_hpo_level1 = False
+run.use_pruning = True
+run.use_hpo_level2 = False
 run.env_implementation = "tf"
 run.use_gpu = True
 run.multi_task = False

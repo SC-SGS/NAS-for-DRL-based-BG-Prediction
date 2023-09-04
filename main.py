@@ -3,6 +3,8 @@ import gin
 import csv
 import optuna
 import datetime
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 from data import dataset
 from absl import app, logging
@@ -20,15 +22,21 @@ if gpus:
 
 
 def main(args):
+    # register activation functions (needed for gin config file)
+    gin.external_configurable(tf.keras.activations.relu, module="tf.keras.activations")
+    gin.external_configurable(tf.keras.activations.tanh, module="tf.keras.activations")
+    gin.external_configurable(tf.keras.activations.sigmoid, module="tf.keras.activations")
     # parse config file
     gin.parse_config_file("config.gin")
+
     run()
 
 
 @gin.configurable
 def run(path_to_train_data="", path_to_eval_data="", normalization=False, normalization_type="min_max",
-        setup="single_step", rl_algorithm="ddpg", env_implementation="tf", use_hpo=False, use_gpu=False,
-        multi_task=False):
+        setup="single_step", rl_algorithm="sac", env_implementation="tf", agent_hpo=None, use_hpo_level1=False,
+        use_pruning=False,
+        use_hpo_level2=False, use_gpu=False, multi_task=False):
     # logging
     log_dir = "./logs/" + "log" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_writer = tf.summary.create_file_writer(log_dir)
@@ -161,8 +169,8 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         tf_eval_env_train = eval_env_train
 
     # set up RL agent
-    if use_hpo:
-        def optuna_objective(trial):
+    if use_hpo_level1:
+        def optuna_level1_objective(trial):
             current_hp = {
                 'critic_net': {
                     'cell_type': trial.suggest_categorical('critic_cell_type', ['lstm', 'gru']),
@@ -278,12 +286,13 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 visualize=False, use_tb_logging=False, save_model=False, save_results=False
             )
             # calculate model complexity (here: number of parameters)
-            current_agent_model_complexity = 0
-            for tv in current_agent.trainable_variables:
-                if len(tv.shape) > 0:
-                    current_agent_model_complexity += tv.shape[-1]
+            current_complexity = 0
+            for current_agent_tv in current_agent.trainable_variables:
+                if len(current_agent_tv.shape) > 0:
+                    # calculate number of parameters for current layer from shape
+                    current_complexity += np.prod(list(current_agent_tv.shape))
                 else:
-                    current_agent_model_complexity += 1
+                    current_complexity += 1
             # write hyperparameters from optuna trial, model complexity, and objective metric to csv
             with open(os.path.join(log_dir, 'optuna_trials.csv'), 'a') as optuna_trials_file:
                 optuna_trials_columns = ['trial_number', 'objective_metric', 'model_complexity']
@@ -292,7 +301,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 optuna_data = {
                     'trial_number': trial.number,
                     'objective_metric': objective_metric.numpy(),
-                    'model_complexity': current_agent_model_complexity,
+                    'model_complexity': current_complexity,
                 }
                 optuna_data.update(trial.params)
                 # if header does not exist, write it
@@ -300,15 +309,15 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                     writer.writeheader()
 
                 writer.writerow(optuna_data)
-            # normalize complexity (default architecture has 32801 parameters)
-            current_agent_model_complexity /= 32801
+            # normalize complexity (default architecture has 5344785 parameters)
+            current_complexity /= 5344785
             # normalize objective metric
             objective_metric /= 20.0
 
-            return objective_metric + current_agent_model_complexity
+            return objective_metric + current_complexity
 
         study = optuna.create_study(direction='minimize')
-        study.optimize(optuna_objective, n_trials=100, n_jobs=4, gc_after_trial=True)
+        study.optimize(optuna_level1_objective, n_trials=100, n_jobs=4, gc_after_trial=True)
         model_hyperparameters = study.best_params
         # reformat best hyperparameters
         best_hp = {'actor_net': {}, 'critic_net': {}}
@@ -384,9 +393,10 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
             state_size_factor * model_hyperparameters['actor_net']['cell_size'][0]
         )
     else:
-        model_hyperparameters = None
+        model_hyperparameters = agent_hpo
 
     agent = rl_agent.get_rl_agent(tf_train_env, rl_algorithm, use_gpu, hp=model_hyperparameters)
+
     # save gin's operative config to a file before training
     config_txt_file = open(log_dir + "/gin_config.txt", "w+")
     config_txt_file.write("Configuration options available before training \n")
@@ -397,15 +407,16 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     if model_hyperparameters is not None and 'train_steps' in model_hyperparameters:
         training.rl_training_loop(
             log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent, ts_train_data,
-            ts_eval_data,
-            file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h, total_eval_time_h,
+            ts_eval_data, file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h,
+            total_eval_time_h,
             max_attribute_val, num_iter, data_summary, env_implementation, multi_task,
             max_train_steps=model_hyperparameters['train_steps']
         )
     else:
         training.rl_training_loop(
             log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent, ts_train_data,
-            ts_eval_data, file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h, total_eval_time_h,
+            ts_eval_data, file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h,
+            total_eval_time_h,
             max_attribute_val, num_iter, data_summary, env_implementation, multi_task
         )
     # save gin's operative config to a file after training
@@ -415,6 +426,120 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     config_txt_file.write("\n")
     config_txt_file.write(gin.operative_config_str())
     config_txt_file.close()
+
+    # post-processing, here: pruning of the policy's actor network (predicts actions which are BG values)
+    if use_pruning:
+        from pruning import RLActorDNNPruner
+        pruning_envs = {
+            'train_env': tf_train_env,
+            'train_env_eval': tf_train_env_eval,
+            'eval_env': tf_eval_env,
+            'eval_env_train': tf_eval_env_train,
+        }
+        init_trainable_variables = agent.policy._actor_network.trainable_variables
+
+        def pruning_loop(envs, pruning_rate=0.5, use_fine_tuning=False, max_train_steps=2000, save_model=False):
+            # reset trainable variables to initial values
+            agent.policy._actor_network.set_weights(init_trainable_variables)
+            fine_tuning_settings = {
+                'file_writer': file_writer,
+                'setup': setup,
+                'forecasting_steps': forecasting_steps,
+                'rl_algorithm': rl_algorithm,
+                'total_train_time_h': total_train_time_h,
+                'total_eval_time_h': total_eval_time_h,
+                'max_attribute_val': max_attribute_val,
+                'num_iter': num_iter,
+                'data_summary': data_summary,
+                'env_implementation': env_implementation,
+                'multi_task': multi_task,
+                'max_train_steps': max_train_steps
+            }
+            pruning_info = {
+                "pruning_method": "prune_low_magnitude",
+                "pruning_rate": pruning_rate,
+                "pruning_scope": "layer-wise",
+                "networks": ["input_encoder", "output_decoder"],
+                "fine_tune": use_fine_tuning,
+            }
+            pruner = RLActorDNNPruner(
+                agent,
+                envs,
+                ts_train_data,
+                ts_eval_data,
+                fine_tuning_settings,
+                log_dir,
+                info=pruning_info,
+            )
+            pruning_results = pruner.prune_model()
+
+            if save_model:
+                from rl.training import save_network_parameters
+                save_network_parameters(log_dir, agent.policy._actor_network, "actor_network_pruning")
+
+            return pruning_results
+
+        if use_hpo_level2:
+            hpo_level2_data = pd.DataFrame(columns=['pruning_rate', 'use_fine_tuning', 'train_steps', 'test_rmse'])
+
+            def optuna_level2_objective(trial):
+                current_level2_data = {}
+                current_pruning_rate = trial.suggest_float('pruning_rate', 0.0, 0.95)
+                current_use_fine_tuning = trial.suggest_categorical('use_fine_tuning', [True, False])
+                current_train_steps = trial.suggest_int('train_steps', 10, int(1e4))
+                current_pruning_results = pruning_loop(
+                    pruning_envs,
+                    pruning_rate=current_pruning_rate,
+                    use_fine_tuning=current_use_fine_tuning,
+                    max_train_steps=current_train_steps
+                )
+                # maximize pruning rate while minimize test rmse
+                level2_objective_metric = (1 - current_pruning_rate) * current_pruning_results['test_rmse']
+
+                current_level2_data['pruning_rate'] = current_pruning_rate
+                current_level2_data['use_fine_tuning'] = current_use_fine_tuning
+                current_level2_data['train_steps'] = current_train_steps
+                current_level2_data['test_rmse'] = current_pruning_results['test_rmse']
+                hpo_level2_data.append(current_level2_data, ignore_index=True)
+
+                return level2_objective_metric
+
+            study = optuna.create_study(direction='minimize')
+            study.optimize(optuna_level2_objective, n_trials=100, n_jobs=4, gc_after_trial=True)
+            logging.info("Best pruning rate: {}".format(study.best_params['pruning_rate']))
+            logging.info("Best use fine tuning: {}".format(study.best_params['use_fine_tuning']))
+            if study.best_params['use_fine_tuning']:
+                logging.info("Best train steps: {}".format(study.best_params['train_steps']))
+            # save hpo_level2_data to csv
+            logging.info("Saving hpo_level2_data to {}".format(os.path.join(log_dir, 'hpo_level2_data.csv')))
+            hpo_level2_data.to_csv(os.path.join(log_dir, 'hpo_level2_data.csv'))
+            final_pruning_rate = study.best_params['pruning_rate']
+            final_use_fine_tuning = study.best_params['use_fine_tuning']
+            train_steps = study.best_params['train_steps']
+
+        else:
+            final_pruning_rate = 0.5
+            final_use_fine_tuning = False
+            train_steps = 2000
+
+        results = pruning_loop(
+            pruning_envs,
+            pruning_rate=final_pruning_rate,
+            use_fine_tuning=final_use_fine_tuning,
+            max_train_steps=train_steps,
+            save_model=True
+        )
+
+        logging.info("Pruning results (MAE): {}".format(results['test_mae']))
+        logging.info("Pruning results (MSE): {}".format(results['test_mse']))
+        logging.info("Pruning results (RMSE): {}".format(results['test_rmse']))
+        # count number of non-zero elements in agent.policy._actor_network trainable variables
+        num_non_zero_variables = 0
+        for v in agent.policy._actor_network.trainable_variables:
+            # count number of non-zero elements in each variable
+            num_non_zero_variables += tf.math.count_nonzero(v).numpy()
+
+        logging.info("Complexity (Number of non-zero variables) after pruning: {}".format(num_non_zero_variables))
 
 
 if __name__ == '__main__':

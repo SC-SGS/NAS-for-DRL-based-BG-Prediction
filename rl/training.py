@@ -14,8 +14,9 @@ from tf_agents.drivers import dynamic_step_driver, dynamic_episode_driver
 def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_train, agent, ts_train_data, ts_eval_data,
                      file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h, total_eval_time_h,
                      max_attribute_val, num_iter, data_summary, env_implementation, multi_task,
-                     max_train_steps=1000, eval_interval=100, multi_task_interval=1, pretraining_phase=False,
-                     restore_dir="", visualize=True, use_tb_logging=True, save_model=True, save_results=True):
+                     max_train_steps=1000, eval_interval=100, multi_task_interval=1, pruning=False, pruning_masks=None,
+                     pretraining_phase=False, restore_dir="", visualize=True, use_tb_logging=True, save_model=True,
+                     save_results=True):
     if eval_interval is None:
         eval_interval = max_train_steps
     # train_env_eval (train env with ground truth as reward) and
@@ -31,11 +32,13 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
         if env_implementation == "tf":
             collect_driver = tf_driver.TrainingDriver(agent, train_env, replay_buffer, rl_algorithm, batch_size=128)
         else:
-            collect_driver = get_collect_driver(train_env,
-                                                agent.collect_policy,
-                                                [replay_buffer.add_batch],
-                                                num_iter=64,
-                                                driver_type="step")
+            collect_driver = get_collect_driver(
+                train_env,
+                agent.collect_policy,
+                [replay_buffer.add_batch],
+                num_iter=64,
+                driver_type="step"
+            )
     else:
         if env_implementation == "tf":
             # num iter has to be the length of an episode for on-policy algorithms
@@ -70,9 +73,10 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
                                        os.path.join(restore_dir, "target_critic_network_2"))
         else:
             logging.info("Model restoring not implemented yet for {}".format(rl_algorithm))
+
     for i in range(max_train_steps + 1):
         logging.debug("Start training iteration {}".format(i))
-        if i % eval_interval == 0:
+        if i % eval_interval == 10:
             # compute average return on train data
             avg_return_train = evaluation.compute_avg_return(train_env, agent.policy, env_implementation)
             # compute average return on eval data
@@ -219,6 +223,24 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
             experience = replay_buffer.gather_all()
             train_loss = agent.train(experience)
 
+            if pruning:
+                for pruning_net, pruning_weights in pruning_masks.items():
+                    if pruning_net == "input_encoder":
+                        for layer in agent._actor_network.layers[0].layers[0].layers:
+                            if isinstance(layer, tf.keras.layers.Dense):
+                                # multiply previous weights with pruning weights
+                                next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
+                                # set new weights
+                                layer.set_weights([next_weights, layer.get_weights()[1]])
+                    elif pruning_net == "output_decoder":
+                        for layer in agent._actor_network.layers[0].layers:
+                            if isinstance(layer, tf.keras.layers.Dense):
+                                # multiply previous weights with pruning weights
+                                next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
+                                layer.set_weights([next_weights, layer.get_weights()[1]])
+                    else:
+                        raise ValueError("Unknown network for pruning: {}".format(pruning_net))
+
         # keep track of actor loss
         if i % eval_interval == 0:
             if use_tb_logging:
@@ -346,4 +368,3 @@ def restore_network_parameters(net, restore_dir, layers_to_train="last"):
                 nl.trainable = trainable
     else:
         logging.info("Train all parameters in network {}".format(net.name))
-
