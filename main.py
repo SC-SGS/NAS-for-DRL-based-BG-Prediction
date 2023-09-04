@@ -277,7 +277,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 current_state_size_factor * current_hp['actor_net']['cell_size'][0]
             )
             current_agent = rl_agent.get_rl_agent(current_tf_train_env, rl_algorithm, use_gpu, hp=current_hp)
-            current_train_steps = trial.suggest_int('train_steps', int(5), int(10))
+            current_train_steps = trial.suggest_int('train_steps', int(1e4), int(5e4))
             objective_metric = training.rl_training_loop(
                 log_dir, current_tf_train_env, current_tf_train_env_eval, current_tf_eval_env,
                 current_tf_eval_env_train, current_agent, ts_train_data, ts_eval_data, file_writer, setup,
@@ -300,7 +300,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 writer = csv.DictWriter(optuna_trials_file, fieldnames=optuna_trials_columns)
                 optuna_data = {
                     'trial_number': trial.number,
-                    'objective_metric': objective_metric.numpy(),
+                    'objective_metric': objective_metric,
                     'model_complexity': current_complexity,
                 }
                 optuna_data.update(trial.params)

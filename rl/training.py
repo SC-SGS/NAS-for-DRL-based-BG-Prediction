@@ -76,7 +76,7 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
 
     for i in range(max_train_steps + 1):
         logging.debug("Start training iteration {}".format(i))
-        if i % eval_interval == 10:
+        if i % eval_interval == 0:
             # compute average return on train data
             avg_return_train = evaluation.compute_avg_return(train_env, agent.policy, env_implementation)
             # compute average return on eval data
