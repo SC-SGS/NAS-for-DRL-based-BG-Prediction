@@ -117,7 +117,7 @@ def compute_metrics_single_step(env, policy, env_implementation, data_summary, s
         avg_rmse = total_rmse / num_iter
         logging.info("[{}] RMSE (step {}): {}".format(prefix, step, avg_rmse))
 
-    return tf.squeeze(avg_mae), tf.squeeze(avg_mse), tf.squeeze(avg_rmse)
+    return tf.squeeze(avg_mae).numpy(), tf.squeeze(avg_mse).numpy(), tf.squeeze(avg_rmse).numpy()
 
 
 def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts_data, pred_horizon, step, log_dir,
@@ -204,7 +204,7 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
         avg_rmse = total_rmse / num_iter
         logging.info("[{}] RMSE (step {}): {}".format(prefix, step, avg_rmse))
 
-    return tf.squeeze(avg_mae), tf.squeeze(avg_mse), tf.squeeze(avg_rmse)
+    return tf.squeeze(avg_mae).numpy(), tf.squeeze(avg_mse).numpy(), tf.squeeze(avg_rmse).numpy()
 
 
 def calculate_action_variance(action_distribution, mean, data_summary, num_steps=100):

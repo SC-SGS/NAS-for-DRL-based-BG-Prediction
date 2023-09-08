@@ -35,8 +35,7 @@ def main(args):
 @gin.configurable
 def run(path_to_train_data="", path_to_eval_data="", normalization=False, normalization_type="min_max",
         setup="single_step", rl_algorithm="sac", env_implementation="tf", agent_hpo=None, use_hpo_level1=False,
-        use_pruning=False,
-        use_hpo_level2=False, use_gpu=False, multi_task=False):
+        use_hpo_level2=False, pruning_settings=None, use_gpu=False, multi_task=False):
     # logging
     log_dir = "./logs/" + "log" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_writer = tf.summary.create_file_writer(log_dir)
@@ -342,7 +341,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                     if key == "actor_input_fc_layer_params_neurons" or key == "actor_output_fc_layer_params_neurons":
                         num_layers = model_hyperparameters[layers_key]
                         best_val = tuple(
-                            [(x % num_layers if x % num_layers != 0 else 1) * value for x in range(num_layers)]
+                            [(x % num_layers if x % num_layers != 0 else 1) * value for x in range(1, num_layers + 1)]
                         )
                     else:
                         best_val = tuple([value for _ in range(model_hyperparameters[layers_key])])
@@ -395,6 +394,20 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     else:
         model_hyperparameters = agent_hpo
 
+        # set state size in RL environments
+        state_size_factor = 2 if agent_hpo['actor_net']['cell_type'] == 'lstm' else 1
+        tf_train_env = tf_train_env.get_environment_with_state_size(
+            state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+        )
+        tf_train_env_eval = tf_train_env_eval.get_environment_with_state_size(
+            state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+        )
+        tf_eval_env = tf_eval_env.get_environment_with_state_size(
+            state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+        )
+        tf_eval_env_train = tf_eval_env_train.get_environment_with_state_size(
+            state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+        )
     agent = rl_agent.get_rl_agent(tf_train_env, rl_algorithm, use_gpu, hp=model_hyperparameters)
 
     # save gin's operative config to a file before training
@@ -416,8 +429,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         training.rl_training_loop(
             log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent, ts_train_data,
             ts_eval_data, file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h,
-            total_eval_time_h,
-            max_attribute_val, num_iter, data_summary, env_implementation, multi_task
+            total_eval_time_h, max_attribute_val, num_iter, data_summary, env_implementation, multi_task
         )
     # save gin's operative config to a file after training
     config_txt_file = open(log_dir + "/gin_config.txt", "a")
@@ -428,7 +440,14 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     config_txt_file.close()
 
     # post-processing, here: pruning of the policy's actor network (predicts actions which are BG values)
-    if use_pruning:
+    if pruning_settings is None:
+        pruning_settings = {
+            'use_pruning': False,
+            'pruning_rate': 0.0,
+            'use_fine_tuning': False,
+            'max_fine_tuning_steps': 0,
+        }
+    if pruning_settings['use_pruning']:
         from pruning import RLActorDNNPruner
         pruning_envs = {
             'train_env': tf_train_env,
@@ -438,7 +457,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         }
         init_trainable_variables = agent.policy._actor_network.trainable_variables
 
-        def pruning_loop(envs, pruning_rate=0.5, use_fine_tuning=False, max_train_steps=2000, save_model=False):
+        def pruning_loop(envs, pruning_rate=0.5, use_fine_tuning=False, max_train_steps=5000, save_model=False):
             # reset trainable variables to initial values
             agent.policy._actor_network.set_weights(init_trainable_variables)
             fine_tuning_settings = {
@@ -515,31 +534,62 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
             hpo_level2_data.to_csv(os.path.join(log_dir, 'hpo_level2_data.csv'))
             final_pruning_rate = study.best_params['pruning_rate']
             final_use_fine_tuning = study.best_params['use_fine_tuning']
-            train_steps = study.best_params['train_steps']
+            fine_tuning_steps = study.best_params['train_steps']
 
         else:
-            final_pruning_rate = 0.5
-            final_use_fine_tuning = False
-            train_steps = 2000
+            final_pruning_rate = pruning_settings['pruning_rate']
+            final_use_fine_tuning = pruning_settings['use_fine_tuning']
+            fine_tuning_steps = pruning_settings['max_fine_tuning_steps']
 
-        results = pruning_loop(
-            pruning_envs,
-            pruning_rate=final_pruning_rate,
-            use_fine_tuning=final_use_fine_tuning,
-            max_train_steps=train_steps,
-            save_model=True
+        if isinstance(final_pruning_rate, float):
+            final_pruning_rate = [final_pruning_rate]
+        elif isinstance(final_pruning_rate, list):
+            pass
+        else:
+            raise ValueError("Invalid pruning rate type: {}".format(type(final_pruning_rate)))
+
+        pruning_results = pd.DataFrame(
+            columns=
+            [
+                'pruning_rate', 'use_fine_tuning', 'train_steps', 'test_rmse', 'test_mae', 'test_mse', 'complexity'
+            ]
         )
+        for pr in final_pruning_rate:
+            results = pruning_loop(
+                pruning_envs,
+                pruning_rate=pr,
+                use_fine_tuning=final_use_fine_tuning,
+                max_train_steps=fine_tuning_steps,
+                save_model=True
+            )
 
-        logging.info("Pruning results (MAE): {}".format(results['test_mae']))
-        logging.info("Pruning results (MSE): {}".format(results['test_mse']))
-        logging.info("Pruning results (RMSE): {}".format(results['test_rmse']))
-        # count number of non-zero elements in agent.policy._actor_network trainable variables
-        num_non_zero_variables = 0
-        for v in agent.policy._actor_network.trainable_variables:
-            # count number of non-zero elements in each variable
-            num_non_zero_variables += tf.math.count_nonzero(v).numpy()
+            logging.info("Pruning results (MAE): {}".format(results['test_mae']))
+            logging.info("Pruning results (MSE): {}".format(results['test_mse']))
+            logging.info("Pruning results (RMSE): {}".format(results['test_rmse']))
+            # count number of non-zero elements in agent.policy._actor_network trainable variables
+            num_non_zero_variables = 0
+            for v in agent.policy._actor_network.trainable_variables:
+                # count number of non-zero elements in each variable
+                num_non_zero_variables += tf.math.count_nonzero(v).numpy()
 
-        logging.info("Complexity (Number of non-zero variables) after pruning: {}".format(num_non_zero_variables))
+            logging.info("Complexity (Number of non-zero variables) after pruning: {}".format(num_non_zero_variables))
+
+            pruning_results = pruning_results.append(
+                {
+                    'pruning_rate': pr,
+                    'use_fine_tuning': final_use_fine_tuning,
+                    'train_steps': fine_tuning_steps,
+                    'test_rmse': results['test_rmse'],
+                    'test_mae': results['test_mae'],
+                    'test_mse': results['test_mse'],
+                    'complexity': num_non_zero_variables
+                },
+                ignore_index=True
+            )
+
+        # save pruning_results to csv
+        logging.info("Saving pruning_results to {}".format(os.path.join(log_dir, 'pruning_results.csv')))
+        pruning_results.to_csv(os.path.join(log_dir, 'pruning_results.csv'))
 
 
 if __name__ == '__main__':

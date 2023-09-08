@@ -74,6 +74,9 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
         else:
             logging.info("Model restoring not implemented yet for {}".format(rl_algorithm))
 
+    if max_train_steps == 0:
+        return best_avg_rmse
+
     for i in range(max_train_steps + 1):
         logging.debug("Start training iteration {}".format(i))
         if i % eval_interval == 0:
