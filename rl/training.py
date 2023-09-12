@@ -226,23 +226,23 @@ def rl_training_loop(log_dir, train_env, train_env_eval, eval_env, eval_env_trai
             experience = replay_buffer.gather_all()
             train_loss = agent.train(experience)
 
-            if pruning:
-                for pruning_net, pruning_weights in pruning_masks.items():
-                    if pruning_net == "input_encoder":
-                        for layer in agent._actor_network.layers[0].layers[0].layers:
-                            if isinstance(layer, tf.keras.layers.Dense):
-                                # multiply previous weights with pruning weights
-                                next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
-                                # set new weights
-                                layer.set_weights([next_weights, layer.get_weights()[1]])
-                    elif pruning_net == "output_decoder":
-                        for layer in agent._actor_network.layers[0].layers:
-                            if isinstance(layer, tf.keras.layers.Dense):
-                                # multiply previous weights with pruning weights
-                                next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
-                                layer.set_weights([next_weights, layer.get_weights()[1]])
-                    else:
-                        raise ValueError("Unknown network for pruning: {}".format(pruning_net))
+        if pruning:
+            for pruning_net, pruning_weights in pruning_masks.items():
+                if pruning_net == "input_encoder":
+                    for layer in agent._actor_network.layers[0].layers[0].layers:
+                        if isinstance(layer, tf.keras.layers.Dense):
+                            # multiply previous weights with pruning weights
+                            next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
+                            # set new weights
+                            layer.set_weights([next_weights, layer.get_weights()[1]])
+                elif pruning_net == "output_decoder":
+                    for layer in agent._actor_network.layers[0].layers:
+                        if isinstance(layer, tf.keras.layers.Dense):
+                            # multiply previous weights with pruning weights
+                            next_weights = pruning_weights[layer.name] * layer.get_weights()[0]
+                            layer.set_weights([next_weights, layer.get_weights()[1]])
+                else:
+                    raise ValueError("Unknown network for pruning: {}".format(pruning_net))
 
         # keep track of actor loss
         if i % eval_interval == 0:
