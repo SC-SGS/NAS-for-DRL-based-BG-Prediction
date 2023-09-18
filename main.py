@@ -1,4 +1,6 @@
 import os
+import sys
+
 import gin
 import csv
 import optuna
@@ -35,7 +37,7 @@ def main(args):
 @gin.configurable
 def run(path_to_train_data="", path_to_eval_data="", normalization=False, normalization_type="min_max",
         setup="single_step", rl_algorithm="sac", env_implementation="tf", agent_hpo=None, use_hpo_level1=False,
-        use_hpo_level2=False, pruning_settings=None, use_gpu=False, multi_task=False):
+        use_hpo_level2=False, pruning_settings=None, analyze_hw_performance=False, use_gpu=False, multi_task=False):
     # logging
     log_dir = "./logs/" + "log" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_writer = tf.summary.create_file_writer(log_dir)
@@ -308,7 +310,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                     writer.writeheader()
 
                 writer.writerow(optuna_data)
-            # normalize complexity (default architecture has 5344785 parameters)
+            # normalize complexity (default agent architecture has 5344785 parameters)
             current_complexity /= 5344785
             # normalize objective metric
             objective_metric /= 20.0
@@ -397,16 +399,20 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         # set state size in RL environments
         state_size_factor = 2 if agent_hpo['actor_net']['cell_type'] == 'lstm' else 1
         tf_train_env = tf_train_env.get_environment_with_state_size(
+            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
         )
         tf_train_env_eval = tf_train_env_eval.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
         tf_eval_env = tf_eval_env.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
         tf_eval_env_train = tf_eval_env_train.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
+            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
     agent = rl_agent.get_rl_agent(tf_train_env, rl_algorithm, use_gpu, hp=model_hyperparameters)
 
@@ -421,8 +427,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         training.rl_training_loop(
             log_dir, tf_train_env, tf_train_env_eval, tf_eval_env, tf_eval_env_train, agent, ts_train_data,
             ts_eval_data, file_writer, setup, forecasting_steps, rl_algorithm, total_train_time_h,
-            total_eval_time_h,
-            max_attribute_val, num_iter, data_summary, env_implementation, multi_task,
+            total_eval_time_h, max_attribute_val, num_iter, data_summary, env_implementation, multi_task,
             max_train_steps=model_hyperparameters['train_steps']
         )
     else:
@@ -503,20 +508,21 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
 
             def optuna_level2_objective(trial):
                 current_level2_data = {}
-                current_pruning_rate = trial.suggest_float('pruning_rate', 0.0, 0.95)
-                current_use_fine_tuning = trial.suggest_categorical('use_fine_tuning', [True, False])
+                current_pruning_rate = trial.suggest_float('pruning_rate', 0.0, 0.9)
+                # current_use_fine_tuning = trial.suggest_categorical('use_fine_tuning', [True, False])
                 current_train_steps = trial.suggest_int('train_steps', 10, int(1e4))
                 current_pruning_results = pruning_loop(
                     pruning_envs,
                     pruning_rate=current_pruning_rate,
-                    use_fine_tuning=current_use_fine_tuning,
-                    max_train_steps=current_train_steps
+                    use_fine_tuning=True,
+                    max_train_steps=current_train_steps,
+                    save_model=False
                 )
                 # maximize pruning rate while minimize test rmse
                 level2_objective_metric = (1 - current_pruning_rate) * current_pruning_results['test_rmse']
 
                 current_level2_data['pruning_rate'] = current_pruning_rate
-                current_level2_data['use_fine_tuning'] = current_use_fine_tuning
+                current_level2_data['use_fine_tuning'] = True
                 current_level2_data['train_steps'] = current_train_steps
                 current_level2_data['test_rmse'] = current_pruning_results['test_rmse']
                 hpo_level2_data.append(current_level2_data, ignore_index=True)
@@ -590,6 +596,64 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         # save pruning_results to csv
         logging.info("Saving pruning_results to {}".format(os.path.join(log_dir, 'pruning_results.csv')))
         pruning_results.to_csv(os.path.join(log_dir, 'pruning_results.csv'))
+
+    if analyze_hw_performance:
+        from evaluation import evaluation
+        if use_gpu:
+            import pynvml
+            pynvml.nvmlInit()
+            num_gpus = pynvml.nvmlDeviceGetCount()
+            if num_gpus > 0:
+                for gpu_id in range(num_gpus):
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+                    # Perform a given number of predictions
+                    eval_results = evaluation.compute_metrics_multi_step(
+                        eval_env, agent.policy, env_implementation, data_summary, ts_eval_data, eval_env.pred_horizon,
+                        "last", log_dir, metrics=["rmse"], prefix="test", save_file=False, return_total_steps=True
+                    )
+                    # Get power usage in milliwatts (mW)
+                    total_power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+                    power_usage = total_power_usage / eval_results[-1]
+                    logging.info("Power usage of Rl agent network on GPU {}: {} W".format(gpu_id, power_usage))
+            else:
+                logging.warning("No GPU found.")
+        else:
+            import pylikwid
+            cpus = []
+            e_info = pylikwid.getpowerinfo()
+            # read in system topology
+            pylikwid.inittopology()
+            info_dict = pylikwid.getcpuinfo()
+            if not info_dict:
+                logging.error("Could not read in system topology.")
+                sys.exit(1)
+
+            cpu_topo = pylikwid.getcputopology()
+            for t in cpu_topo["threadPool"].keys():
+                cpus.append(cpu_topo["threadPool"][t]["apicId"])
+            # initialize performance analyzer
+            pylikwid.init(cpus)
+            for cpu_core in cpus:
+                # Temperature
+                pylikwid.inittemp(cpu_core)
+                # Energy consumption
+                if e_info is not None:
+                    e_start = pylikwid.startpower(cpu_core, e_info["domains"]["PKG"]["ID"])
+                    temp_start = pylikwid.readtemp(cpu_core)
+                    # Perform a given number of predictions
+                    eval_results = evaluation.compute_metrics_multi_step(
+                        eval_env, agent.policy, env_implementation, data_summary, ts_eval_data, eval_env.pred_horizon,
+                        "last", log_dir, metrics=["rmse"], prefix="test", save_file=False, return_total_steps=True
+                    )
+                    e_stop = pylikwid.stoppower(cpu_core, e_info["domains"]["PKG"]["ID"])
+                    temp_stop = pylikwid.readtemp(cpu_core)
+                    total_energy = pylikwid.getpower(e_start, e_stop, e_info["domains"]["PKG"]["ID"])
+                    energy = total_energy / eval_results[-1]
+                    logging.info("Energy consumption of Rl agent network on CPU core {}: {} J".format(cpu_core, energy))
+                    logging.info("Temperature of CPU core {} before evaluation: {} °C".format(cpu_core, temp_start))
+                    logging.info("Temperature of CPU core {} after evaluation: {} °C".format(cpu_core, temp_stop))
+                else:
+                    logging.warning("No energy support.")
 
 
 if __name__ == '__main__':

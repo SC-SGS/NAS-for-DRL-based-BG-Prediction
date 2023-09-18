@@ -55,10 +55,10 @@ class RLActorDNNPruner:
             "test_mse": test_mse,
             "test_rmse": test_rmse,
         }
-        pruning_masks = {
-            "input_encoder": input_encoder_pruning_mask,
-            "output_decoder": output_decoder_pruning_mask,
-        }
+        # pruning_masks = {
+        #     "input_encoder": input_encoder_pruning_mask,
+        #     "output_decoder": output_decoder_pruning_mask,
+        # }
 
         return test_results
 
@@ -105,7 +105,7 @@ class RLActorDNNPruner:
         return pruning_masks
 
     def fine_tune(self, input_encoder_pruning_mask, output_decoder_pruning_mask):
-        rl_training_loop(
+        fine_tuning_result = rl_training_loop(
             self.log_dir,
             self.environments['train_env'],
             self.environments['train_env_eval'],

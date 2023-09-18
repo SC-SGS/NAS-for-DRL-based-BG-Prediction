@@ -16,46 +16,43 @@ run.rl_algorithm = "sac"
 #------------------------ [Optional] if not specified, the default hyperparameters are used ----------------------------
 run.agent_hpo = {
     'critic_net': {
-        'critic_net': {
-            'cell_type': 'lstm',
-            'cell_size': (256,),
-            'observation_fc_layer_params': (256, 256),
-            'action_fc_layer_params': (128,),
-            'joint_fc_layer_params': (256, 256),
-            'output_fc_layer_params': (256, 256),
-            'activation_fn': @relu,
-        },
-        'actor_net': {
-            'cell_type': 'lstm',
-            'cell_size': (256,),
-            'input_fc_layer_params': (256, 512, 256),
-            'output_fc_layer_params': (256, 512, 256),
-            'activation_fn': @relu,
-        },
-        'target_update_period': 10,
-        'target_update_tau': 0.005,
+        'cell_type': 'lstm',
+        'cell_size': (256,),
+        'observation_fc_layer_params': (256, 256),
+        'action_fc_layer_params': (128,),
+        'joint_fc_layer_params': (256, 256),
+        'output_fc_layer_params': (256, 256),
+        'activation_fn': @relu,
+    },
+    'actor_net': {
+        'cell_type': 'lstm',
+        'cell_size': (256,),
+        'input_fc_layer_params': (256, 512, 256),
+        'output_fc_layer_params': (256, 512, 256),
+        'activation_fn': @relu,
     },
     'target_update_period': 10,
     'target_update_tau': 0.005,
 }
 # ----------------------------------------------------------------------------------------------------------------------
 run.use_hpo_level1 = False
-run.use_hpo_level2 = False
+run.use_hpo_level2 = True
 run.pruning_settings = {
-    'use_pruning': False,
+    'use_pruning': True,
     # Specify scalar pruning rate or list of pruning rates (iterate over list)
     # 'pruning_rate': [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
     'pruning_rate': 0.5,
     'use_fine_tuning': False,
     'max_fine_tuning_steps': 0,
 }
+run.analyze_hw_performance = False
 run.env_implementation = "tf"
 run.use_gpu = True
 run.multi_task = False
 
 # -------------------------------------------- DRL training settings ---------------------------------------------------
 
-rl_training_loop.max_train_steps = 50000
+rl_training_loop.max_train_steps = 0
 rl_training_loop.eval_interval = 1000
 rl_training_loop.pretraining_phase = False
 # e.g. /home/domanspr/rl_time_series_forecasting/logs/log2022-04-28_21-31-39/w&b; "" if no restoring

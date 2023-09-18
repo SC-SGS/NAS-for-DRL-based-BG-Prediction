@@ -121,23 +121,20 @@ def compute_metrics_single_step(env, policy, env_implementation, data_summary, s
 
 
 def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts_data, pred_horizon, step, log_dir,
-                               metrics=['mae', 'mse', 'rmse'],  num_iter=1, use_rnn_state=True, prefix="train",
-                               save_file=True):
-    if 'mae' in metrics:
-        total_mae = 0.0
-    if 'mse' in metrics:
-        total_mse = 0.0
-    if 'rmse' in metrics:
-        total_rmse = 0.0
+                               metrics=None,  num_iter=1, use_rnn_state=True, prefix="train",
+                               save_file=True, return_total_steps=False):
+    if metrics is None:
+        metrics = ['mae', 'mse', 'rmse']
+
+    total_mae, total_mse, total_rmse = 0.0, 0.0, 0.0
+    total_steps = 0
+
     for _ in range(num_iter):
         time_step = env.reset()
         rnn_state = policy.get_initial_state(batch_size=1)
-        if 'mae' in metrics:
-            episode_mae = 0.0
-        if 'mse' in metrics:
-            episode_mse = 0.0
-        if 'rmse' in metrics:
-            episode_rmse = 0.0
+
+        episode_mae, episode_mse, episode_rmse = 0.0, 0.0, 0.0
+
         step_counter = 0
 
         while not time_step.is_last():
@@ -187,6 +184,8 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
                 if save_file:
                     write_to_csv_file(parameter_values, step, log_dir, prefix)
 
+        total_steps += step_counter
+
         if 'mae' in metrics:
             total_mae += episode_mae / step_counter
         if 'mse' in metrics:
@@ -197,14 +196,23 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
     if 'mae' in metrics:
         avg_mae = total_mae / num_iter
         logging.info("[{}] MAE (step {}): {}".format(prefix, step, avg_mae))
+    else:
+        avg_mae = None
     if 'mse' in metrics:
         avg_mse = total_mse / num_iter
         logging.info("[{}] MSE (step {}): {}".format(prefix, step, avg_mse))
+    else:
+        avg_mse = None
     if 'rmse' in metrics:
         avg_rmse = total_rmse / num_iter
         logging.info("[{}] RMSE (step {}): {}".format(prefix, step, avg_rmse))
+    else:
+        avg_rmse = None
 
-    return tf.squeeze(avg_mae).numpy(), tf.squeeze(avg_mse).numpy(), tf.squeeze(avg_rmse).numpy()
+    if return_total_steps:
+        return avg_mae, avg_mse, avg_rmse, total_steps
+    else:
+        return avg_mae, avg_mse, avg_rmse
 
 
 def calculate_action_variance(action_distribution, mean, data_summary, num_steps=100):
