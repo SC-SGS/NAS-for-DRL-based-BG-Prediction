@@ -399,20 +399,16 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         # set state size in RL environments
         state_size_factor = 2 if agent_hpo['actor_net']['cell_type'] == 'lstm' else 1
         tf_train_env = tf_train_env.get_environment_with_state_size(
-            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
         )
         tf_train_env_eval = tf_train_env_eval.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
-            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
         tf_eval_env = tf_eval_env.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
-            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
         tf_eval_env_train = tf_eval_env_train.get_environment_with_state_size(
             state_size_factor * agent_hpo['actor_net']['cell_size'][0]
-            # agent_hpo['actor_net']['cell_size'][0] + agent_hpo['critic_net']['cell_size'][0]
         )
     agent = rl_agent.get_rl_agent(tf_train_env, rl_algorithm, use_gpu, hp=model_hyperparameters)
 
@@ -518,8 +514,10 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                     max_train_steps=current_train_steps,
                     save_model=False
                 )
+                # normalize test RMSE
+                level2_test_rmse = current_pruning_results['test_rmse'] / 20.0
                 # maximize pruning rate while minimize test rmse
-                level2_objective_metric = (1 - current_pruning_rate) * current_pruning_results['test_rmse']
+                level2_objective_metric = (1 - current_pruning_rate) * level2_test_rmse
 
                 current_level2_data['pruning_rate'] = current_pruning_rate
                 current_level2_data['use_fine_tuning'] = True
