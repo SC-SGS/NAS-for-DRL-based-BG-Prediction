@@ -517,7 +517,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
                 # normalize test RMSE
                 level2_test_rmse = current_pruning_results['test_rmse'] / 20.0
                 # maximize pruning rate while minimize test rmse
-                level2_objective_metric = (1 - current_pruning_rate) * level2_test_rmse
+                level2_objective_metric = (1 - current_pruning_rate) + level2_test_rmse
 
                 current_level2_data['pruning_rate'] = current_pruning_rate
                 current_level2_data['use_fine_tuning'] = True
