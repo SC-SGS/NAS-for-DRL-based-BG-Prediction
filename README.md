@@ -37,6 +37,7 @@ Install dependencies using the following command:
         Note: dqn only for single step; tf_agents only supoort scalar actions 
         Note: On-policy: reinforce, ppo ; Off-policy: ddpg, td3, sac, dqn
     - env_implementation [str]: specify environment implementation to use   (options: tf, gym)
+    - use_nas [bool]; Specify to use Neural Architecture Search
     - use_gpu [bool]: Specify to use GPU(s) 
     - multi_task [bool]: If True multi-task setup (training on multiple patients simultaneously)
 #### DRL training settings
