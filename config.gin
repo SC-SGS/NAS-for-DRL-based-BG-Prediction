@@ -1,5 +1,4 @@
 # ------------------------------------------------ General settings ----------------------------------------------------
-
 # Debug data: ./data/RasberryPi.csv
 # Ohio data, e.g., path_to_dir/540-ws-training.csv
 # Note: Specify path to directory (that include training .csv files) for multi_task=True
@@ -35,24 +34,14 @@ run.agent_hpo = {
     'target_update_tau': 0.005,
 }
 # ----------------------------------------------------------------------------------------------------------------------
-run.use_hpo_level1 = False
-run.use_hpo_level2 = True
-run.pruning_settings = {
-    'use_pruning': True,
-    # Specify scalar pruning rate or list of pruning rates (iterate over list)
-    # 'pruning_rate': [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-    'pruning_rate': 0.5,
-    'use_fine_tuning': False,
-    'max_fine_tuning_steps': 0,
-}
-run.analyze_hw_performance = False
+run.use_nas = False
 run.env_implementation = "tf"
 run.use_gpu = True
 run.multi_task = False
 
 # -------------------------------------------- DRL training settings ---------------------------------------------------
 
-rl_training_loop.max_train_steps = 0
+rl_training_loop.max_train_steps = 10000
 rl_training_loop.eval_interval = 1000
 rl_training_loop.pretraining_phase = False
 # e.g. /home/domanspr/rl_time_series_forecasting/logs/log2022-04-28_21-31-39/w&b; "" if no restoring
