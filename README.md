@@ -1,11 +1,11 @@
-# Blood Glucose Prediction for Type-1 Diabetics using Deep Reinforcement Learning
+# Neural Architecture Search for Deep Reinforcement Learning-based Blood Glucose Prediction of Type-1 Diabetes 
 
 [![Linux](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](https://ubuntu.com/download)
 [![Python](https://img.shields.io/badge/python-3.7-blue.svg)](https://www.python.org/downloads/release/python-370/)
 
 
 Deep Reinforcement Learning-based framework for single- or multi-step ahead predictions of time series data, 
-e.g. (continuous) blood glucose values of type 1 diabetics. <br/>
+e.g. (continuous) blood glucose values of type 1 diabetics. The framework uses [Optuna](https://optuna.readthedocs.io/en/stable/index.html) for (additional) Neural Architecture Search and Hyperparameter Optimization. <br/>
 Here is an overview of the proposed methodology:
 
 ![Alt text](./images/overview.png?raw=true "Methodology")
