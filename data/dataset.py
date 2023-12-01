@@ -13,6 +13,7 @@ def load_csv_dataset(path_to_data):
         total_time = datetime.datetime.strptime(pandas_ds["_ts"].iloc[-1], date_format_str) - \
                      datetime.datetime.strptime(pandas_ds["_ts"].iloc[0], date_format_str)
         total_time = np.round((total_time.days * 24) + (total_time.seconds / 3600))
+        
     return pandas_ds.iloc[:, -1].astype(np.float32), total_time
 
 
@@ -39,6 +40,7 @@ def data_normalization_multi_patient(data_train, data_test, normalization_type):
         elif normalization_type == "z_score":
             normalized_train_data.append((data_train[i] - data_summary['mean']) / data_summary['std'])
             normalized_test_data.append((data_test[i] - data_summary['mean']) / data_summary['std'])
+            
     return normalized_train_data, normalized_test_data, data_summary
 
 
@@ -59,6 +61,7 @@ def data_normalization(data_frame_train, data_frame_test, normalization_type):
     elif normalization_type == "z_score":
         data_frame_train = (data_frame_train - mean_attribute_value) / std
         data_frame_test = (data_frame_test - mean_attribute_value) / std
+        
     return data_frame_train, data_frame_test, data_summary
 
 
