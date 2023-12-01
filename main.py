@@ -35,8 +35,8 @@ def main(args):
 
 @gin.configurable
 def run(path_to_train_data="", path_to_eval_data="", normalization=False, normalization_type="min_max",
-        setup="single_step", rl_algorithm="sac", env_implementation="tf", agent_hpo=None, use_hpo_level1=False,
-        use_hpo_level2=False, pruning_settings=None, analyze_hw_performance=False, use_gpu=False, multi_task=False):
+        setup="single_step", rl_algorithm="sac", env_implementation="tf", agent_hpo=None, use_nas=False,
+        use_gpu=False, multi_task=False):
     # logging
     log_dir = "./logs/" + "log" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_writer = tf.summary.create_file_writer(log_dir)
@@ -54,6 +54,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         total_train_time_h = int((len(ts_train_data) * 5) / 60) + 1
     else:
         ts_train_data, total_train_time_h = dataset.load_csv_dataset(path_to_train_data)
+        
     if path_to_eval_data != "":
         if multi_task:
             dataset_files = sorted(os.listdir(path_to_eval_data), key=lambda index: int(index.split("-")[0]))
@@ -70,6 +71,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
     else:
         ts_eval_data = ts_train_data
         total_eval_time_h = total_train_time_h
+        
     if normalization:
         if multi_task:
             ts_train_data, ts_eval_data, data_summary = dataset.data_normalization_multi_patient(
@@ -125,10 +127,12 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
             train_env = environment.TsForecastingMultiStepEnv(ts_train_data, rl_algorithm)
             train_env_eval = environment.TsForecastingMultiStepEnv(
                 ts_train_data, rl_algorithm, evaluation=True, max_window_count=-1)
+            
         if normalization:
             max_attribute_val = dataset.undo_data_normalization_sample_wise(train_env.max_attribute_val, data_summary)
         else:
             max_attribute_val = train_env.max_attribute_val
+            
         if path_to_eval_data != "":
             if env_implementation == "tf":
                 eval_env = environment.TsForecastingMultiStepTFEnv(
@@ -169,7 +173,7 @@ def run(path_to_train_data="", path_to_eval_data="", normalization=False, normal
         tf_eval_env_train = eval_env_train
 
     # set up RL agent
-    if use_hpo_level1:
+    if use_nas:
         def optuna_level1_objective(trial):
             current_hp = {
                 'critic_net': {
