@@ -32,6 +32,7 @@ def compute_avg_return(env, policy, env_implementation, num_iter=16, normalize=F
             total_return += episode_return
 
     avg_return = total_return / num_iter
+    
     return tf.squeeze(avg_return)
 
 
@@ -75,6 +76,7 @@ def compute_metrics_single_step(env, policy, env_implementation, data_summary, s
                 ground_truth = dataset.undo_data_normalization_sample_wise(time_step.reward, data_summary)
             parameter_values['ground_truth'] = ground_truth.numpy()
             parameter_values['prediction'] = agent_pred.numpy()
+            
             if 'mae' in metrics:
                 mae_val = tf.math.abs(agent_pred - ground_truth)
                 episode_mae += mae_val
