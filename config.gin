@@ -46,7 +46,6 @@ run.pruning_settings = {
     'use_fine_tuning': False,
     'max_fine_tuning_steps': 0,
 }
-run.analyze_hw_performance = False
 run.env_implementation = "tf"
 run.use_gpu = False
 run.multi_task = False
