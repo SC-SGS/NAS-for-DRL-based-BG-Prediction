@@ -51,6 +51,8 @@ def calculate_metric_value(data_frame, metric_names, sampling_strategy, indices,
         metric_val = np.mean(metric_data, 0)
         print("{}={} ({} samples, {})".format(name, metric_val, indices[1] - indices[0], sampling_strategy))
 
+def calculate_std_pred_vs_gt(data_frame):
+
 
 # ------------------------------------------------- Main loop ----------------------------------------------------------
 

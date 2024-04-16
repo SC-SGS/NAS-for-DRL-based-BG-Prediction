@@ -1,12 +1,13 @@
 # ------------------------------------------------ General settings ----------------------------------------------------
+
 # Debug data: ./data/RasberryPi.csv
 # Ohio data, e.g., path_to_dir/540-ws-training.csv
 # Note: Specify path to directory (that include training .csv files) for multi_task=True
-run.path_to_train_data = "./data/RasberryPi.csv"
+run.path_to_train_data = "/home/domanspr/Documents/Duke/projects/RL_for_time_series_forecasting/datasets/OhioT1DM/575-ws-training.csv"
 # if path to eval data empty only training data is used
 # Ohio data, e.g., path_to_dir/540-ws-testing.csv
 # Note: Specify path to directory (that include testing .csv files) for multi_task=True
-run.path_to_eval_data = ""
+run.path_to_eval_data = "/home/domanspr/Documents/Duke/projects/RL_for_time_series_forecasting/datasets/OhioT1DM/575-ws-testing.csv"
 run.normalization = True
 # min_max, mean, z_score
 run.normalization_type = "z_score"
@@ -14,7 +15,7 @@ run.setup = "multi_step"
 run.rl_algorithm = "sac"
 #------------------------ [Optional] if not specified, the default hyperparameters are used ----------------------------
 run.agent_hpo = {
-    'critic_net': {
+     'critic_net': {
         'cell_type': 'lstm',
         'cell_size': (256,),
         'observation_fc_layer_params': (256, 256),
@@ -32,20 +33,31 @@ run.agent_hpo = {
     },
     'target_update_period': 10,
     'target_update_tau': 0.005,
+    'path_to_hp': "",
 }
 # ----------------------------------------------------------------------------------------------------------------------
-run.use_nas = False
+run.use_hpo_level1 = False
+run.use_hpo_level2 = False
+run.pruning_settings = {
+    'use_pruning': True,
+    # Specify scalar pruning rate or list of pruning rates (iterate over list)
+    # 'pruning_rate': [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    'pruning_rate': [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    'use_fine_tuning': False,
+    'max_fine_tuning_steps': 0,
+}
+run.analyze_hw_performance = False
 run.env_implementation = "tf"
-run.use_gpu = True
+run.use_gpu = False
 run.multi_task = False
 
 # -------------------------------------------- DRL training settings ---------------------------------------------------
 
-rl_training_loop.max_train_steps = 10000
+rl_training_loop.max_train_steps = 0
 rl_training_loop.eval_interval = 1000
 rl_training_loop.pretraining_phase = False
 # e.g. /home/domanspr/rl_time_series_forecasting/logs/log2022-04-28_21-31-39/w&b; "" if no restoring
-rl_training_loop.restore_dir = ""
+rl_training_loop.restore_dir = "/home/domanspr/Documents/Duke/projects/RL_for_time_series_forecasting/level1_opt_models/icdh/575/w&b"
 
 # last, dec_last, lstm_dec_last (dec = decoder)
 restore_network_parameters.layers_to_train = ""

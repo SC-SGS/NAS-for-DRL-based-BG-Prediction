@@ -3,6 +3,7 @@ import csv
 import tensorflow as tf
 from data import dataset
 from absl import logging
+from datetime import datetime
 
 
 def compute_avg_return(env, policy, env_implementation, num_iter=16, normalize=False, use_rnn_state=True):
@@ -32,7 +33,6 @@ def compute_avg_return(env, policy, env_implementation, num_iter=16, normalize=F
             total_return += episode_return
 
     avg_return = total_return / num_iter
-    
     return tf.squeeze(avg_return)
 
 
@@ -76,7 +76,6 @@ def compute_metrics_single_step(env, policy, env_implementation, data_summary, s
                 ground_truth = dataset.undo_data_normalization_sample_wise(time_step.reward, data_summary)
             parameter_values['ground_truth'] = ground_truth.numpy()
             parameter_values['prediction'] = agent_pred.numpy()
-            
             if 'mae' in metrics:
                 mae_val = tf.math.abs(agent_pred - ground_truth)
                 episode_mae += mae_val
@@ -124,12 +123,13 @@ def compute_metrics_single_step(env, policy, env_implementation, data_summary, s
 
 def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts_data, pred_horizon, step, log_dir,
                                metrics=None,  num_iter=1, use_rnn_state=True, prefix="train",
-                               save_file=True, return_total_steps=False):
+                               save_file=True, analyze_hw_performance=False):
     if metrics is None:
         metrics = ['mae', 'mse', 'rmse']
 
     total_mae, total_mse, total_rmse = 0.0, 0.0, 0.0
     total_steps = 0
+    total_time_consumption = 0.0
 
     for _ in range(num_iter):
         time_step = env.reset()
@@ -142,6 +142,7 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
         while not time_step.is_last():
             parameter_values = {}
             step_counter += 1
+            start_time = datetime.now()
             action_step, rnn_state, _ = policy.action(time_step, rnn_state)
             ground_truth_pos = int(tf.squeeze(env._current_data_pos))
             if use_rnn_state:
@@ -151,6 +152,8 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
                     time_step = env.step(action_step)
             else:
                 time_step = env.step(action_step)
+
+            total_time_consumption += (datetime.now() - start_time).microseconds
             # agent forecast
             if len(data_summary) == 0:
                 agent_pred = tf.squeeze(action_step)
@@ -211,8 +214,8 @@ def compute_metrics_multi_step(env, policy, env_implementation, data_summary, ts
     else:
         avg_rmse = None
 
-    if return_total_steps:
-        return avg_mae, avg_mse, avg_rmse, total_steps
+    if analyze_hw_performance:
+        return avg_mae, avg_mse, avg_rmse, total_time_consumption, total_steps
     else:
         return avg_mae, avg_mse, avg_rmse
 
