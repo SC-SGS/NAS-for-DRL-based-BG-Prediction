@@ -153,6 +153,21 @@ tensorboard --logdir /home/my_project/logs/my_log_dir
    - Example:
    ![Alt text](./images/seg_30min_570.png?raw=true "SEG 30 min subject 570")
 
+### Citation
+If you like our work, please cite the following paper
+```
+@article{domanski2024advancing,
+  title={Advancing blood glucose prediction with neural architecture search and deep reinforcement learning for type 1 diabetics},
+  author={Domanski, Peter and Ray, Aritra and Lafata, Kyle and Firouzi, Farshad and Chakrabarty, Krishnendu and Pfl{\"u}ger, Dirk},
+  journal={Biocybernetics and Biomedical Engineering},
+  volume={44},
+  number={3},
+  pages={481--500},
+  year={2024},
+  publisher={Elsevier}
+}
+```
+
 
 
 
